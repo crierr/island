@@ -557,6 +557,16 @@ export function admin(target, key, desc) {
   }
 }
 
+export function devonly(target, key, desc) {
+  const options = desc.value.options = (desc.value.options || {}) as EndpointOptions;
+  options.developmentOnly = true;
+  if (desc.value.endpoints) {
+    desc.value.endpoints.forEach(e => {
+      _.merge(e.options, options);
+    });
+  }
+}
+
 function mangle(name) {
   return name.replace(' ', '@').replace(/\//g, '|');
 }

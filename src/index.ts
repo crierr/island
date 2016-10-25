@@ -37,6 +37,7 @@ export {
   sanitize,
   admin,
   auth,
+  devonly,
   EndpointOptions,
   EndpointSchemaOptions,
   endpoint,
