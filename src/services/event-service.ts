@@ -65,8 +65,17 @@ export class EventService {
       }
       this.handleMessage(msg)
         .catch(e => {
-          logger.error(`error on handling event: ${e}`);
-          //todo: define island error and publish log.eventError
+          logger.error(`error on handling event`, e);
+          let params = msg.content;
+          try {
+            params = JSON.parse(msg.content.toString('utf8'), reviver);
+          } catch (e) {
+          }
+          return this._publish(EventService.EXCHANGE_NAME, 'log.eventError', {
+            event: msg.fields.routingKey,
+            params: params,
+            error: e
+          }, {});
         })
         .finally(() => {
           channel.ack(msg);
