@@ -10,6 +10,7 @@
   ],
   "scripts": {
     "prepublish": "gulp build",
+    "postinstall": "gulp build",
     "build": "gulp build",
     "watch": "gulp build && gulp watch",
     "clean": "gulp clean",
