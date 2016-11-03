@@ -186,17 +186,6 @@ export default class RPCService {
     return {channel: channel, tag: result.consumerTag};
   }
 
-  private trackRpcCalls(tattoo: string, state: string): void {
-    const logItem = {
-      'timestamp': new Date().getTime(),
-      'originIsland': this.serviceName,
-      'requestTrackId': tattoo,
-      'state': state
-    };
-
-    this._publish('MESSAGE_BROKER_EXCHANGE', 'rpclog.log', new Buffer(JSON.stringify(logItem), 'utf8'));
-  }
-
   public _publish(exchange: any, routingKey: any, content: any, options?: any) {
     return this.channelPool.usingChannel(channel => {
       return Promise.resolve(channel.publish(exchange, routingKey, content, options));
@@ -232,7 +221,6 @@ export default class RPCService {
             }
           }
         }
-        this.trackRpcCalls(tattoo, 'RPC-REQUEST-RECV');
 
         logger.debug(`Got ${name} with ${JSON.stringify(content)}`)
 
@@ -249,7 +237,6 @@ export default class RPCService {
                 validate(rpcOptions.schema.result.validation, res);
               }
             }
-            this.trackRpcCalls(tattoo, 'RPC-RESPONSE-SEND');
             this.channelPool.usingChannel(channel => {
               return Promise.resolve(channel.sendToQueue(msg.properties.replyTo, RpcResponse.encode(res, this.serviceName), options));
             });
@@ -310,7 +297,6 @@ export default class RPCService {
     const tattoo = ns.get('RequestTrackId');
     const context = ns.get('Context');
     const type = ns.get('Type');
-    this.trackRpcCalls(tattoo, 'RPC-REQUEST-SEND');
     const correlationId = uuid.v4();
     const headers = {
       tattoo,
@@ -350,7 +336,6 @@ export default class RPCService {
       this.reqExecutors[corrId] = ns.bind((msg: Message) => {
         clearTimeout(this.reqTimeouts[corrId]);
         delete this.reqTimeouts[corrId];
-        this.trackRpcCalls(tattoo, 'RPC-RESPONSE-RECV');
 
         const res = RpcResponse.decode(msg.content);
         if (!res.result) return reject(res.body);
