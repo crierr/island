@@ -71,11 +71,12 @@ export class EventService {
             params = JSON.parse(msg.content.toString('utf8'), reviver);
           } catch (e) {
           }
-          return this._publish(EventService.EXCHANGE_NAME, 'log.eventError', {
+          const buffer = new Buffer(JSON.stringify({
             event: msg.fields.routingKey,
             params: params,
             error: e
-          }, {});
+          }), 'utf8');
+          return this._publish(EventService.EXCHANGE_NAME, 'log.eventError', buffer, {});
         })
         .finally(() => {
           channel.ack(msg);
