@@ -94,7 +94,11 @@ export default class Islet {
           .then(() => Promise.all(adapters.map(adapter => adapter.listen())));
       })
       .then(() => logger.info('started'))
-      .then(() => this.onStarted());
+      .then(() => this.onStarted())
+      .catch(e => {
+        console.log('failed to initialize', e);
+        process.exit(1);
+      });
   }
 
   protected onInitialized() {}
