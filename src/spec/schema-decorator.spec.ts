@@ -29,7 +29,9 @@ describe('validate', () => {
       vcode: Number,
       dcode: Number,
       name: String,
-      slot: Number
+      slot: Number,
+      cider: v.Cider,
+      number: v.NumberOrQuery
     });
     expect(result).toEqual({
       type: 'object',
@@ -38,7 +40,9 @@ describe('validate', () => {
         vcode: { type: 'number', optional: false },
         dcode: { type: 'number', optional: false },
         name: { type: 'string', optional: false },
-        slot: { type: 'number', optional: false }
+        slot: { type: 'number', optional: false },
+        cider: { type: '$cider', optional: false },
+        number: { type: '$numberOrQuery', optional: false }
       }
     });
   });
@@ -46,7 +50,7 @@ describe('validate', () => {
     const result = v.validate([v.Cider]);
     expect(result).toEqual({
       type: 'array',
-      items: { type: '$cider', optional: false }
+      items:{ type: '$cider', optional: false }
     });
   });
   it('should support empty array', () => {
@@ -202,7 +206,9 @@ describe('sanitize', () => {
       vcode: 1,
       dcode: 1,
       name: String,
-      slot: 1
+      slot: 1,
+      cider: s.Cider,
+      number: s.NumberOrQuery,
     });
     expect(result).toEqual({
       type: 'object',
@@ -211,7 +217,9 @@ describe('sanitize', () => {
         vcode: { type: 'number', def: 1, optional: true },
         dcode: { type: 'number', def: 1, optional: true },
         name: { type: 'string', optional: true },
-        slot: { type: 'number', def: 1, optional: true }
+        slot: { type: 'number', def: 1, optional: true },
+        cider: { optional: true, type: '$cider' },
+        number: { optional: true, type: '$numberOrQuery' }
       }
     });
   });

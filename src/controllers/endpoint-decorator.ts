@@ -42,10 +42,7 @@ export interface EndpointSchemaOptions {
 type SchemaInspectorProperty = {
   optional?: boolean;
   def?: any;
-  type?: 'string' | 'number' | 'integer' | 'boolean' | 'null' | 'date' | 'object' | 'array' | 'any' | '$oid' | '$cider';
-  lte?: number;
-  exactLength?: number;
-  eq?: [string] | string;
+  type?: 'string' | 'number' | 'integer' | 'boolean' | 'null' | 'date' | 'object' | 'array' | 'any' | '$oid' | '$cider' | '$numberOrQuery';
   properties?: any;
   items?: any | [any];
 }
@@ -71,7 +68,8 @@ export namespace sanitize {
   export const Cider: _Cider = { $sanitize: Symbol() };
   export interface _Any { $sanitize: Symbol; }
   export const Any: _Any = { $sanitize: Symbol() };
-
+  export interface _NumberOrQuery { $sanitize: Symbol; }
+  export const NumberOrQuery: _NumberOrQuery = { $sanitize: Symbol() }
 
   export interface __Number {
     def?: number;
@@ -166,7 +164,7 @@ export namespace sanitize {
     typeof global.String | string | _String |
     typeof global.Number | number | _Number |
     typeof Boolean | typeof Date | _Object | _Array | _Any |
-    _ObjectId | _Cider;
+    _ObjectId | _Cider | _NumberOrQuery;
 
   function parseSanitization(property: SchemaInspectorProperty, value: SanitizePropertyTypes) {
     if (value === undefined) return;
@@ -201,6 +199,8 @@ export namespace sanitize {
       property.type = '$oid';
     } else if (value === Cider) {
       property.type = '$cider';
+    } else if (value === NumberOrQuery) {
+      property.type = '$numberOrQuery';
     }
     return _.omitBy(property, _.isUndefined);
   }
@@ -250,6 +250,7 @@ export namespace sanitize {
        target === Boolean ||
        target === ObjectId ||
        target === Cider ||
+       target === NumberOrQuery ||
        target === Any
      ) {
        return false;
@@ -292,6 +293,8 @@ export namespace validate {
   export const ObjectId: _ObjectId = { $validate: Symbol() };
   export interface _Cider { $validate: Symbol; };
   export const Cider: _Cider = { $validate: Symbol() };
+  export interface _NumberOrQuery { $validate: Symbol; };
+  export const NumberOrQuery: _NumberOrQuery = { $validate: Symbol() };
   export interface _Any { $validate: Symbol; };
   export const Any: _Any = { $validate: Symbol() };
 
@@ -386,7 +389,7 @@ export namespace validate {
     typeof global.String | string | _String |
     typeof global.Number | number | _Number |
     typeof Boolean | typeof Date | _Object | _Array | _Any |
-    _ObjectId | _Cider;
+    _ObjectId | _Cider | _NumberOrQuery;
 
 
   function parseValidation(property: SchemaInspectorProperty, value: ValidatePropertyTypes) {
@@ -416,6 +419,8 @@ export namespace validate {
       property.type = '$oid';
     } else if (value === Cider) {
       property.type = '$cider';
+    } else if (value === NumberOrQuery) {
+      property.type = '$numberOrQuery';
     }
     return _.omitBy(property, _.isUndefined);
   }
@@ -467,6 +472,7 @@ export namespace validate {
       target === Boolean ||
       target === ObjectId ||
       target === Cider ||
+      target === NumberOrQuery ||
       target === Any
     ) {
       return false;
