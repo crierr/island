@@ -18,7 +18,7 @@
     "coverage": "gulp coverage"
   },
   "dependencies": {
-    "amqplib": "^0.4.2",
+    "amqplib": "0.4.2",
     "bluebird": "<3.0.0",
     "cls-bluebird": "^2.0.1",
     "cls-mongoose": "^2.0.1",
