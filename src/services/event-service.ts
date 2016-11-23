@@ -57,33 +57,34 @@ export class EventService {
   }
 
   private registerConsumer(channel: amqp.Channel, queue: string): Promise<any> {
-    return Promise.resolve(channel.consume(queue, msg => {
-      if (!msg) {
-        logger.error(`consume was canceled unexpectedly`);
-        //todo: handle unexpected cancel
-        return;
-      }
-      this.handleMessage(msg)
-        .catch(e => {
-          logger.error(`error on handling event`, e);
-          let params = msg.content;
-          try {
-            params = JSON.parse(msg.content.toString('utf8'), reviver);
-          } catch (e) {
-          }
-          const buffer = new Buffer(JSON.stringify({
-            event: msg.fields.routingKey,
-            params: params,
-            error: e
-          }), 'utf8');
-          return this._publish(EventService.EXCHANGE_NAME, 'log.eventError', buffer, {});
-        })
-        .finally(() => {
-          channel.ack(msg);
-          //todo: fix me. we're doing ACK always even if promise rejected.
-          //todo: how can we handle the case subscribers succeeds or fails partially
-        });
-    }));
+    return Promise.resolve(channel.prefetch(process.env.EVENT_PREFETCH || 100))
+      .then(() => channel.consume(queue, msg => {
+        if (!msg) {
+          logger.error(`consume was canceled unexpectedly`);
+          //todo: handle unexpected cancel
+          return;
+        }
+        this.handleMessage(msg)
+          .catch(e => {
+            logger.error(`error on handling event`, e);
+            let params = msg.content;
+            try {
+              params = JSON.parse(msg.content.toString('utf8'), reviver);
+            } catch (e) {
+            }
+            const buffer = new Buffer(JSON.stringify({
+              event: msg.fields.routingKey,
+              params: params,
+              error: e
+            }), 'utf8');
+            return this._publish(EventService.EXCHANGE_NAME, 'log.eventError', buffer, {});
+          })
+          .finally(() => {
+            channel.ack(msg);
+            //todo: fix me. we're doing ACK always even if promise rejected.
+            //todo: how can we handle the case subscribers succeeds or fails partially
+          });
+      }));
     //todo: save channel and consumer tag
   }
 
