@@ -57,7 +57,7 @@ export class EventService {
   }
 
   private registerConsumer(channel: amqp.Channel, queue: string): Promise<any> {
-    return Promise.resolve(channel.prefetch(process.env.EVENT_PREFETCH || 100))
+    return Promise.resolve(channel.prefetch(+process.env.EVENT_PREFETCH || 1000))
       .then(() => channel.consume(queue, msg => {
         if (!msg) {
           logger.error(`consume was canceled unexpectedly`);

@@ -158,7 +158,7 @@ export default class RPCService {
   protected async _consume(key: string, handler: (msg) => Promise<any>, tag: string, options?: any):
       Promise<IConsumerInfo> {
     const channel = await this.channelPool.acquireChannel();
-    await channel.prefetch(process.env.RPC_PREFETCH || 100);
+    await channel.prefetch(+process.env.RPC_PREFETCH || 1000);
     const result = await channel.consume(key, async (msg) => {
       try {
         await handler(msg);
