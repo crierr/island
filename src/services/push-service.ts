@@ -67,10 +67,15 @@ export default class PushService {
    * @param sourceOpts
    * @returns {Promise<any>}
    */
-  bindExchange(destination: string, source: string, pattern?: string, sourceType?: string, sourceOpts?: any) {
+  bindExchange(destination: string,
+               source: string,
+               pattern: string = '',
+               sourceType: string = 'fanout',
+               sourceOpts: any = PushService.DEFAULT_EXCHANGE_OPTIONS
+  ): Promise<any> {
     debug(`bind exchanges. (source:${source}) => destination:${destination}`);
     return this.channelPool.usingChannel(channel => {
-      return channel.assertExchange(source, sourceType || 'fanout', sourceOpts || PushService.DEFAULT_EXCHANGE_OPTIONS)
+      return channel.assertExchange(source, sourceType, sourceOpts)
         .then(() => {
           return channel.bindExchange(destination, source, pattern || '', {})
             .catch(e => {
