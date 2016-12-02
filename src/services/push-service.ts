@@ -70,10 +70,25 @@ export default class PushService {
   bindExchange(destination: string, source: string, pattern?: string, sourceType?: string, sourceOpts?: any) {
     debug(`bind exchanges. (source:${source}) => destination:${destination}`);
     return this.channelPool.usingChannel(channel => {
-      return channel.checkExchange(destination)
-        .then(() => channel.assertExchange(source, sourceType || 'fanout',
-          sourceOpts || PushService.DEFAULT_EXCHANGE_OPTIONS))
-        .then(() => channel.bindExchange(destination, source, pattern || '', {}));
+      return channel.assertExchange(source, sourceType || 'fanout', sourceOpts || PushService.DEFAULT_EXCHANGE_OPTIONS)
+        .then(() => {
+          return channel.bindExchange(destination, source, pattern || '', {})
+            .catch(e => {
+              if (sourceOpts.autoDelete) {
+                // Auto-delete is triggered only when target exchange is unbound or deleted.
+                // If previous bind fails, we can't ensure auto-delete triggered or not.
+                // Below workaround prevents this from happening.
+                const failOverX = 'auto-delete.trigger';
+                return channel.assertExchange(failOverX, 'direct')
+                  .then(() => channel.bindExchange(failOverX, source, 'never.route'))
+                  .then(() => channel.unbindExchange(failOverX, source, 'never.route'))
+                  .then(() => {
+                    throw e;
+                  });
+              }
+              throw e;
+            })
+        });
     });
   }
 
