@@ -17,18 +17,15 @@ export interface ChannelInfo {
 
 export class AmqpChannelPoolService {
   static DEFAULT_POOL_SIZE: number = 100;
-  static EXPERATION_TIME: number = 1000 * 300;  // 5 minutes
 
   private connection: amqp.Connection;
   private options: AmqpOptions;
   private openChannels: amqp.Channel[] = [];
   private idleChannels: ChannelInfo[] = [];
   private initResolver: Promise.Resolver<void>;
-  private date: Date;
 
   constructor() {
     this.initResolver = Promise.defer<void>();
-    this.date = new Date();
   }
 
   initialize(options: AmqpOptions): Promise<void> {
@@ -54,30 +51,22 @@ export class AmqpChannelPoolService {
     return Promise.resolve(this.connection.close());
   }
 
-  acquireChannel(): Promise<amqp.Channel> {
-    return Promise.try(() => {
-      if (this.idleChannels.length) {
-        return this.idleChannels.pop().channel;
-      }
-      return this.createChannel();
-    });
+  async acquireChannel(): Promise<amqp.Channel> {
+    if (this.idleChannels.length) {
+      return this.idleChannels.shift().channel;
+    }
+    return this.createChannel();
   }
 
-  releaseChannel(channel: amqp.Channel): Promise<void> {
-    return Promise.try(() => {
-      if (!_.includes(this.openChannels, channel)) {
-        return;
-      }
-      if (this.idleChannels.length < this.options.poolSize) {
-        this.idleChannels.push({channel:channel, date: this.date.getTime()});
-        while(this.idleChannels.length > 0 &&
-        this.idleChannels[0].date + AmqpChannelPoolService.EXPERATION_TIME < this.date.getTime()) {
-          this.idleChannels.shift().channel.close();
-        }
-        return;
-      }
-      return channel.close();
-    });
+  async releaseChannel(channel: amqp.Channel, reusable: boolean = false): Promise<void> {
+    if (!_.includes(this.openChannels, channel)) {
+      return;
+    }
+    if (reusable && this.idleChannels.length < this.options.poolSize) {
+      this.idleChannels.push({channel:channel, date: +new Date()});
+      return;
+    }
+    return channel.close();
   }
 
   usingChannel<T>(task: (channel: amqp.Channel) => PromiseLike<T>): Promise<T> {
@@ -86,8 +75,8 @@ export class AmqpChannelPoolService {
 
   getChannelDisposer(): Promise.Disposer<amqp.Channel> {
     return this.acquireChannel()
-      .disposer(channel => {
-        this.releaseChannel(channel);
+      .disposer((channel: amqp.Channel, promise: Promise<any>) => {
+        return this.releaseChannel(channel, promise.isFulfilled());
       });
   }
 
