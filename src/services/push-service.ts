@@ -1,8 +1,6 @@
 import MessagePack from '../utils/msgpack';
 import { AmqpChannelPoolService } from './amqp-channel-pool-service';
-import _debug = require('debug');
-
-let debug = _debug('ISLAND:SERVICES:PUSH');
+import { logger } from '../utils/logger';
 
 export default class PushService {
   private static DEFAULT_EXCHANGE_OPTIONS: any = {
@@ -62,7 +60,7 @@ export default class PushService {
 
   async deleteExchange(exchange:string, options?: any): Promise<any> {
     return this.channelPool.usingChannel(channel => {
-      debug(`[INFO] delete exchange's name ${exchange}`);
+      logger.debug(`[INFO] delete exchange's name ${exchange}`);
       return channel.deleteExchange(exchange, options);
     });
   }
@@ -82,8 +80,7 @@ export default class PushService {
                      sourceType: string = 'fanout',
                      sourceOpts: any = PushService.DEFAULT_EXCHANGE_OPTIONS
   ): Promise<any> {
-    debug(`bind exchanges. (source:${source}) => destination:${destination}`);
-
+    logger.debug(`bind exchange. ${source} ==${pattern}==> ${destination}`);
     let sourceDeclared = false;
     try {
       await this.channelPool.usingChannel(async (channel) => {
@@ -115,6 +112,7 @@ export default class PushService {
    * @returns {Promise<any>}
    */
   async unbindExchange(destination: string, source: string, pattern: string = ''): Promise<any> {
+    logger.debug(`unbind exchange; ${source} --${pattern}--X ${destination}`);
     return this.channelPool.usingChannel(channel => {
       return channel.unbindExchange(destination, source, pattern, {});
     });
