@@ -77,7 +77,7 @@ export class ResourceTarget extends ResourcePath {
     super('', []);
   }
 
-  flush(): Promise<any> {
+  async flush(): Promise<any> {
     return this.pushService.unicast(this.target, {cmd: 'resources', opts: this.changes});
   }
 }
