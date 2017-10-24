@@ -24,7 +24,7 @@ export default class PushService {
 
   // Exchange to push to a specific user.
   public static playerPushExchange = {
-    name: 'push.player',
+    name: 'unicast.player',
     options: {
       durable: true
     },
@@ -66,6 +66,10 @@ export default class PushService {
     return obj;
   }
 
+  public static hashExchangeName(name: string, n: number): number {
+    return name.split('').reduce((sum, curChar) => sum + curChar.charCodeAt(0), 0) % n;
+  }
+
   private static DEFAULT_EXCHANGE_OPTIONS: any = {
     autoDelete: true,
     durable: true
@@ -78,32 +82,35 @@ export default class PushService {
     }
   };
 
-  private channelPool: AmqpChannelPoolService;
+  private channelPools: AmqpChannelPoolService[];
+  private manualSpread: boolean = false;
 
   constructor() {
   }
 
-  public async initialize(channelPool: AmqpChannelPoolService): Promise<any> {
-    this.channelPool = channelPool;
-
-    await this.channelPool.usingChannel(async channel => {
-      const playerPushX = PushService.playerPushExchange;
-      const broadcastExchange = PushService.broadcastExchange;
-      _.forEach(broadcastExchange.name, async name => {
-        await channel.assertExchange(name,
-          broadcastExchange.type, PushService.broadcastExchange.options);
-      });
-      await channel.assertExchange(playerPushX.name, playerPushX.type, playerPushX.options);
-      await channel.assertQueue(PushService.autoDeleteTriggerQueue.name, PushService.autoDeleteTriggerQueue.options);
-      await channel.bindExchange(PushService.broadcastExchange.name.pc, PushService.broadcastExchange.name.all, '');
-      await channel.bindExchange(PushService.broadcastExchange.name.mobile, PushService.broadcastExchange.name.all, '');
-    });
+  get brokerIndices(): number[] {
+    return _.range(this.channelPools.length);
   }
 
-  async purge(): Promise<any> {}
+  async initialize(channelPools: AmqpChannelPoolService[]): Promise<any> {
+    this.channelPools = channelPools;
+    await Promise.all(_.map(channelPools, cpool => this.initBroker(cpool)));
+    const MANUAL_SPREAD = process.env.MANUAL_SPREAD;
+    if (MANUAL_SPREAD === '1' || MANUAL_SPREAD === 'true') {
+      this.manualSpread = true;
+      logger.info(`This node operates in MANUAL_SPREAD mode. Do not use RabbitMQ federation.`);
+    }
+  }
 
-  async deleteExchange(exchange: string, options?: any): Promise<any> {
-    return this.channelPool.usingChannel(channel => {
+  async purge(): Promise<any> {
+    await Promise.all(_.map(this.channelPools, cpool => cpool.purge()));
+  }
+
+  async deleteExchange(exchange: string,
+                       options?: any,
+                       brokerOptions: BrokerOptions = { hashKey: exchange }): Promise<any> {
+    const { channelPool } = this.selectChannelPool(brokerOptions);
+    return channelPool.usingChannel(channel => {
       logger.debug(`[INFO] delete exchange's name ${exchange}`);
       return channel.deleteExchange(exchange, options);
     });
@@ -118,16 +125,19 @@ export default class PushService {
    * @param sourceOpts
    * @returns {Promise<any>}
    */
+  // FIXME: too many arguments.
   async bindExchange(destination: string,
                      source: string,
                      pattern: string = '',
                      sourceType: string = 'fanout',
-                     sourceOpts: any = PushService.DEFAULT_EXCHANGE_OPTIONS
+                     sourceOpts: any = PushService.DEFAULT_EXCHANGE_OPTIONS,
+                     brokerOptions: BrokerOptions = { hashKey: destination }
   ): Promise<any> {
-    logger.debug(`bind exchange. ${source} ==${pattern}==> ${destination}`);
+    const { channelPool, brokerIndex } = this.selectChannelPool(brokerOptions);
+    logger.debug(`bind exchange. ${source} ==${pattern}==> ${destination} in broker#${brokerIndex}`);
     let sourceDeclared = false;
     try {
-      await this.channelPool.usingChannel(async channel => {
+      await channelPool.usingChannel(async channel => {
         await channel.assertExchange(source, sourceType, sourceOpts);
         sourceDeclared = true;
         await channel.bindExchange(destination, source, pattern);
@@ -139,7 +149,7 @@ export default class PushService {
       // caution: Binding x-recent-history exchange to unroutable target causes connection loss.
       // target should be a queue and routable.
       if (sourceDeclared && sourceOpts.autoDelete) {
-        await this.channelPool.usingChannel(async channel => {
+        await channelPool.usingChannel(async channel => {
           await channel.bindQueue(PushService.autoDeleteTriggerQueue.name, source, '');
           await channel.unbindQueue(PushService.autoDeleteTriggerQueue.name, source, '');
         });
@@ -155,9 +165,15 @@ export default class PushService {
    * @param pattern
    * @returns {Promise<any>}
    */
-  async unbindExchange(destination: string, source: string, pattern: string = ''): Promise<any> {
-    logger.debug(`unbind exchange; ${source} --${pattern}--X ${destination}`);
-    return this.channelPool.usingChannel(channel => {
+  // FIXME: too many arguments.
+  async unbindExchange(destination: string,
+                       source: string,
+                       pattern: string = '',
+                       brokerOptions: BrokerOptions = { hashKey: destination }
+  ): Promise<any> {
+    const { channelPool, brokerIndex } = this.selectChannelPool(brokerOptions);
+    logger.debug(`unbind exchange; ${source} --${pattern}--X ${destination} in broker#${brokerIndex}`);
+    return channelPool.usingChannel(channel => {
       return channel.unbindExchange(destination, source, pattern, {});
     });
   }
@@ -170,7 +186,9 @@ export default class PushService {
    * @returns {Promise<any>}
    */
   async unicast(pid: string, msg: any, options?: any): Promise<any> {
-    return this.channelPool.usingChannel(async channel => {
+    // Surely, we already know what broker should take the message.
+    const { channelPool } = this.selectChannelPool({ hashKey: pid });
+    return channelPool.usingChannel(async channel => {
       return channel.publish(PushService.playerPushExchange.name, pid, PushService.encode(msg), options);
     });
   }
@@ -183,10 +201,15 @@ export default class PushService {
    * @param options
    * @returns {Promise<any>}
    */
-  async multicast(exchange: string, msg: any, routingKey: string = '', options?: any): Promise<any> {
-    return this.channelPool.usingChannel(async channel => {
-      return channel.publish(exchange, routingKey, PushService.encode(msg), options);
-    });
+  async multicast(exchange: string, msg: any, routingKey: string = '', options?: any): Promise<void> {
+    if (this.manualSpread) {
+      await Promise.all(_.map(this.channelPools, channelPool => this.multicastOne({
+        channelPool, exchange, msg, routingKey, options
+      })));
+    } else {
+      const channelPool = _.sample(this.channelPools);
+      await this.multicastOne({ channelPool, exchange, msg, routingKey, options });
+    }
   }
 
   /**
@@ -196,10 +219,72 @@ export default class PushService {
    * @returns {Promise<any>}
    */
   async broadcast(msg: any, options?: any): Promise<any> {
-    return this.channelPool.usingChannel(async channel => {
+    if (this.manualSpread) {
+      await Promise.all(_.map(this.channelPools, channelPool => this.broadcastOne({
+        channelPool, msg, options
+      })));
+    } else {
+      const channelPool = _.sample(this.channelPools);
+      await this.broadcastOne({ channelPool, msg, options });
+    }
+  }
+
+  private async initBroker(channelPool: AmqpChannelPoolService): Promise<void> {
+    await channelPool.usingChannel(async channel => {
+      const playerPushX = PushService.playerPushExchange;
+      const broadcastExchange = PushService.broadcastExchange;
+      await Promise.all(_.map(broadcastExchange.name, async name => {
+        await channel.assertExchange(name,
+          broadcastExchange.type, PushService.broadcastExchange.options);
+      }));
+      await channel.assertExchange(playerPushX.name, playerPushX.type, playerPushX.options);
+      await channel.assertQueue(PushService.autoDeleteTriggerQueue.name, PushService.autoDeleteTriggerQueue.options);
+      await channel.bindExchange(PushService.broadcastExchange.name.pc, PushService.broadcastExchange.name.all, '');
+      await channel.bindExchange(PushService.broadcastExchange.name.mobile, PushService.broadcastExchange.name.all, '');
+    });
+  }
+
+  private selectChannelPool({ hashKey, brokerIndex }: BrokerOptions): {
+    channelPool: AmqpChannelPoolService,
+    brokerIndex: number
+  } {
+    if (_.isNumber(brokerIndex)) {
+      brokerIndex %= this.channelPools.length;
+    } else {
+      brokerIndex = PushService.hashExchangeName(hashKey || '', this.channelPools.length);
+    }
+    return {
+      channelPool: this.channelPools[brokerIndex],
+      brokerIndex
+    };
+  }
+
+  private async multicastOne({ channelPool, exchange, msg, routingKey, options }: {
+    channelPool: AmqpChannelPoolService;
+    exchange: string;
+    msg: any;
+    routingKey: string;
+    options?: any;
+  }): Promise<any> {
+    return channelPool.usingChannel(async channel => {
+      return channel.publish(exchange, routingKey, PushService.encode(msg), options);
+    });
+  }
+
+  private async broadcastOne({ channelPool, msg, options }: {
+    channelPool: AmqpChannelPoolService;
+    msg: any;
+    options?: any;
+  }): Promise<any> {
+    return channelPool.usingChannel(async channel => {
       const target: BroadcastTarget = options && options.broadcastTarget || 'all';
       const fanout = PushService.broadcastExchange.name[target];
       return channel.publish(fanout, '', PushService.encode(msg), options);
     });
   }
+}
+
+export interface BrokerOptions {
+  hashKey?: string;
+  brokerIndex?: number;
 }
