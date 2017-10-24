@@ -18,7 +18,7 @@ describe('PushService test : ', () => {
     const url = process.env.RABBITMQ_HOST || 'amqp://rabbitmq:5672';
 
     return amqpChannelPool.initialize({ url })
-      .then(() => pushService.initialize(amqpChannelPool))
+      .then(() => pushService.initialize([amqpChannelPool]))
       .then(() =>
         amqpChannelPool.usingChannel(channel => {
           channel.assertQueue(sourceQueue, {});
