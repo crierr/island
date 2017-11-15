@@ -6,7 +6,7 @@ import ListenableAdapter from '../listenable-adapter';
 import { AmqpChannelPoolAdapter } from './amqp-channel-pool-adapter';
 
 export interface PushAdapterOptions {
-  urls: string[];
+  urls?: string[];
   poolSize?: number;
   prefetchCount?: number;
   amqpChannelPoolAdapter?: AmqpChannelPoolAdapter;
@@ -18,6 +18,9 @@ export default class PushAdapter extends ListenableAdapter<PushService, PushAdap
     const { urls, poolSize, prefetchCount, amqpChannelPoolAdapter } = this.options;
     let channelPools: AmqpChannelPoolService[];
     if (!amqpChannelPoolAdapter) {
+      if (!urls) {
+        throw new FatalError(ISLAND.FATAL.F0025_MISSING_ADAPTER_OPTIONS);
+      }
       channelPools = await Promise.all(map(urls, async url => {
         const pool = new AmqpChannelPoolService();
         await pool.initialize({ url, poolSize, prefetchCount });

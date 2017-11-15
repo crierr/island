@@ -24,7 +24,7 @@ export default class PushService {
 
   // Exchange to push to a specific user.
   public static playerPushExchange = {
-    name: 'unicast.player',
+    name: 'push.player',
     options: {
       durable: true
     },
